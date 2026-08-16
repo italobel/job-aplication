@@ -9,6 +9,8 @@ import { assertSafeFetchUrl, strictUrlFetchEnabled } from '../providers/_url_saf
 import { completeCursorPrompt } from '../web/cursor_agent.mjs';
 import { runSelectedScoring } from '../web/llm_routing.mjs';
 import { jobIdentityForUrl, openJobDb, upsertScoredRole, urlIdentityKey } from '../web/job_db.mjs';
+import { childEnvForCli } from '../web/provider_secrets.mjs';
+import { claudeBinFrom, runClaudeScoringBatches, scoringBatchFromEnv, scoringModelFromEnv } from '../web/claude_cli.mjs';
 
 const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 function envValue(name, legacyName, fallback = '') {
@@ -759,6 +761,20 @@ function runCodexScoring(fetched) {
   return extractJson(output);
 }
 
+function runClaudeScoring(fetched) {
+  return runClaudeScoringBatches({
+    fetched,
+    spawnSyncImpl: spawnSync,
+    bin: claudeBinFrom({}, process.env),
+    model: scoringModelFromEnv(process.env),
+    batchSize: scoringBatchFromEnv(process.env),
+    cwd: PROFILE_ROOT,
+    env: childEnvForCli(envBase(), { provider: 'anthropic' }),
+    buildPrompt: scoringPrompt,
+    extractJson,
+  });
+}
+
 async function runCursorScoring(fetched) {
   if (!fetched.length) return { rows: [], notes: 'No new roles cleared local scan and tracker dedupe.' };
   const output = await completeCursorPrompt({
@@ -1021,6 +1037,7 @@ async function scoreWithSelectedProvider(fetched) {
     provider: String(process.env.SUITOR_LLM_PROVIDER || '').trim().toLowerCase(),
     fetched,
     runCursor: runCursorScoring,
+    runClaude: runClaudeScoring,
     runCodex: runCodexScoring,
     fallback: fallbackScoring,
   });
