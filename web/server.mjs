@@ -23,7 +23,7 @@ import {
 } from './provider_secrets.mjs';
 import { collectCursorContext, formatCursorContextMarkdown } from './cursor_context.mjs';
 import { claudeTextOnlyArgs } from './claude_cli.mjs';
-import { splitQueries, MAX_SEARCH_LANES } from '../scripts/linkedin_lanes.mjs';
+import { splitQueries, MAX_SEARCH_LANES, normalizeLinkedInRecency } from '../scripts/linkedin_lanes.mjs';
 import { posixBrowserProfileProcessIds } from '../scripts/browser_profile_command.mjs';
 import {
   classifyBoardUrl,
@@ -5155,7 +5155,9 @@ async function handleApi(req, res, pathname) {
     const body = JSON.parse(await readBody(req) || '{}');
     const query = String(body.query || config.connections?.linkedin?.searchQuery || '').trim();
     const limit = Math.max(1, Math.min(Number(body.limit || 6), 12));
-    const args = ['linkedin-search', '--limit', String(limit)];
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const recency = normalizeLinkedInRecency(body.recency ?? url.searchParams.get('recency'));
+    const args = ['linkedin-search', '--limit', String(limit), '--recency', recency];
     if (query) args.push('--query', query);
     const companies = linkedInFallbackCompanies(config.connections?.targetCompanies || []);
     if (companies.length) args.push('--companies', companies.join('; '));

@@ -2,6 +2,13 @@
 // `limit` is a per-lane quota. Every lane always runs.
 
 export const MAX_SEARCH_LANES = 14;
+export const LINKEDIN_RECENCY_VALUES = ['r1800', 'r3600', 'r86400', 'r604800'];
+export const LINKEDIN_RECENCY_DEFAULT = 'r86400';
+
+export function normalizeLinkedInRecency(value) {
+  const recency = String(value || '').trim();
+  return LINKEDIN_RECENCY_VALUES.includes(recency) ? recency : LINKEDIN_RECENCY_DEFAULT;
+}
 
 export function splitQueries(value) {
   const parts = String(value || '')

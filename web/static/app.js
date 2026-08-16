@@ -484,11 +484,19 @@ function linkedInLanes() {
   return [`${state.meta.candidateFirst || ''} operations leadership`.trim() || 'operations leadership'];
 }
 
-function localLinkedInJobsUrl(lane) {
+const LINKEDIN_RECENCY_VALUES = new Set(['r1800', 'r3600', 'r86400', 'r604800']);
+const LINKEDIN_RECENCY_DEFAULT = 'r86400';
+
+function normalizeLinkedInRecency(value) {
+  const recency = String(value || '').trim();
+  return LINKEDIN_RECENCY_VALUES.has(recency) ? recency : LINKEDIN_RECENCY_DEFAULT;
+}
+
+function localLinkedInJobsUrl(lane, recency) {
   const params = new URLSearchParams({
     keywords: lane || linkedInLanes()[0],
     f_WT: '2',
-    f_TPR: 'r604800',
+    f_TPR: normalizeLinkedInRecency(recency),
   });
   return `https://www.linkedin.com/jobs/search/?${params.toString()}`;
 }
@@ -3596,7 +3604,7 @@ els.linkedinSearchBtn?.addEventListener('click', async () => {
   const query = (state.linkedinLanes || []).join('; ') || els.linkedinQuery.value.trim();
   const poller = setInterval(refreshBrowserStatus, 1800);
   try {
-    await streamPost('/api/browser/linkedin-search', { query, limit: 6 }, {
+    await streamPost('/api/browser/linkedin-search', { query, limit: 6, recency: normalizeLinkedInRecency() }, {
       set innerHTML(v) {
         els.browserLog.textContent = plainTextFromRendered(v);
         refreshBrowserStatus();
