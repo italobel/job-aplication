@@ -1865,7 +1865,7 @@ function normalizeScanDecisionRecord(item = {}) {
     source: dbText(item.source),
     reportFile,
     reason: dbText(item.reason),
-    score: dbNumber(item.score),
+    score: dbScore(item.score),
     comp: dbText(item.comp || item.compensation),
     location: dbText(item.location),
     decidedAt: dbText(item.decidedAt || item.decided_at),
