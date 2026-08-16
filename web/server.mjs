@@ -24,6 +24,7 @@ import {
 import { collectCursorContext, formatCursorContextMarkdown } from './cursor_context.mjs';
 import { claudeTextOnlyArgs } from './claude_cli.mjs';
 import { splitQueries, MAX_SEARCH_LANES } from '../scripts/linkedin_lanes.mjs';
+import { posixBrowserProfileProcessIds } from '../scripts/browser_profile_command.mjs';
 import {
   classifyBoardUrl,
   generatedTargetCompanyEntries,
@@ -3249,7 +3250,11 @@ function writeBrowserStatusPatch(patch, logLine = '') {
 }
 
 function browserProfileProcessIds() {
-  if (process.platform !== 'win32') return [];
+  if (process.platform !== 'win32') {
+    const result = spawnSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf-8' });
+    if (result.error) return [];
+    return posixBrowserProfileProcessIds(result.stdout, BROWSER_PROFILE_DIR, process.pid);
+  }
   const escapedProfile = BROWSER_PROFILE_DIR.replace(/'/g, "''").toLowerCase();
   const script = [
     `$needle = '${escapedProfile}'`,
@@ -3269,18 +3274,19 @@ function browserProfileProcessIds() {
 }
 
 function releaseBrowserProfileProcesses() {
-  if (process.platform !== 'win32') return [];
   const pids = browserProfileProcessIds();
   for (const pid of pids) {
     try {
       process.kill(pid, 'SIGTERM');
     } catch {}
-    try {
-      spawnSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], {
-        encoding: 'utf-8',
-        windowsHide: true,
-      });
-    } catch {}
+    if (process.platform === 'win32') {
+      try {
+        spawnSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], {
+          encoding: 'utf-8',
+          windowsHide: true,
+        });
+      } catch {}
+    }
   }
   return pids;
 }
