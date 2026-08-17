@@ -23,7 +23,7 @@ import {
 } from './provider_secrets.mjs';
 import { collectCursorContext, formatCursorContextMarkdown } from './cursor_context.mjs';
 import { claudeTextOnlyArgs } from './claude_cli.mjs';
-import { splitQueries, MAX_SEARCH_LANES, normalizeLinkedInRecency } from '../scripts/linkedin_lanes.mjs';
+import { splitQueries, MAX_SEARCH_LANES, normalizeLinkedInRecency, normalizeLinkedInLocation, normalizeLinkedInWorkplace } from '../scripts/linkedin_lanes.mjs';
 import { posixBrowserProfileProcessIds } from '../scripts/browser_profile_command.mjs';
 import {
   classifyBoardUrl,
@@ -5157,7 +5157,9 @@ async function handleApi(req, res, pathname) {
     const limit = Math.max(1, Math.min(Number(body.limit || 6), 12));
     const url = new URL(req.url, `http://${req.headers.host}`);
     const recency = normalizeLinkedInRecency(body.recency ?? url.searchParams.get('recency'));
-    const args = ['linkedin-search', '--limit', String(limit), '--recency', recency];
+    const location = normalizeLinkedInLocation(body.location ?? url.searchParams.get('location'));
+    const workplace = normalizeLinkedInWorkplace(body.workplace ?? body.f_WT ?? url.searchParams.get('workplace') ?? url.searchParams.get('f_WT'));
+    const args = ['linkedin-search', '--limit', String(limit), '--recency', recency, '--location', location, '--workplace', workplace || 'none'];
     if (query) args.push('--query', query);
     const companies = linkedInFallbackCompanies(config.connections?.targetCompanies || []);
     if (companies.length) args.push('--companies', companies.join('; '));

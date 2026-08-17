@@ -5,9 +5,22 @@
 import assert from 'assert/strict';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { MAX_SEARCH_LANES, splitQueries, runSearchLanes } from './linkedin_lanes.mjs';
+import { MAX_SEARCH_LANES, splitQueries, runSearchLanes, normalizeLinkedInRecency, normalizeLinkedInLocation, normalizeLinkedInWorkplace } from './linkedin_lanes.mjs';
 
 assert.equal(MAX_SEARCH_LANES, 14, 'lane cap is 14');
+
+assert.equal(normalizeLinkedInRecency('r1800'), 'r1800');
+assert.equal(normalizeLinkedInRecency('r3600'), 'r3600');
+assert.equal(normalizeLinkedInRecency('r86400'), 'r86400');
+assert.equal(normalizeLinkedInRecency('r604800'), 'r604800');
+assert.equal(normalizeLinkedInRecency('nope'), 'r86400', 'unknown recency stays on the 24h default');
+assert.equal(normalizeLinkedInLocation(''), 'United States');
+assert.equal(normalizeLinkedInLocation('Atlanta, Georgia, United States'), 'Atlanta, Georgia, United States');
+assert.equal(normalizeLinkedInWorkplace('2'), '2');
+assert.equal(normalizeLinkedInWorkplace(''), '');
+assert.equal(normalizeLinkedInWorkplace('hybrid'), '', 'unknown workplace is any');
+assert.equal(normalizeLinkedInWorkplace('none'), '');
+
 
 assert.deepEqual(
   splitQueries('ic ai; ai operations; customer operations'),

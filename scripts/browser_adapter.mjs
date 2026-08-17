@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 import { cpSync, existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, renameSync } from 'fs';
 import { basename, dirname, relative, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { runSearchLanes, splitQueries, normalizeLinkedInRecency } from './linkedin_lanes.mjs';
+import { runSearchLanes, splitQueries, normalizeLinkedInRecency, normalizeLinkedInLocation, normalizeLinkedInWorkplace } from './linkedin_lanes.mjs';
 
 const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 function envValue(name, legacyName, fallback = '') {
@@ -358,18 +358,29 @@ function isUsLinkedInLocation(location) {
   return /^(united states(?: of america)?|usa|u\.s\.a\.?|u\.s\.?|us)$/i.test(value);
 }
 
-export function linkedInSearchUrl(query, recency) {
+function resolveLinkedInLocation(location) {
+  return normalizeLinkedInLocation(location ?? DEFAULT_LOCATION);
+}
+
+function resolveLinkedInWorkplace(workplace) {
+  if (workplace === undefined || workplace === null) return DEFAULT_WORKPLACE;
+  return normalizeLinkedInWorkplace(workplace);
+}
+
+export function linkedInSearchUrl(query, recency, location, workplace) {
   const params = new URLSearchParams();
+  const loc = resolveLinkedInLocation(location);
+  const wt = resolveLinkedInWorkplace(workplace);
   params.set('keywords', query || DEFAULT_QUERY);
-  params.set('location', DEFAULT_LOCATION);
+  params.set('location', loc);
   // LinkedIn scopes job search by geoId; the free-text `location` alone is
   // advisory and LinkedIn falls back to the session's own geography.
   // The default US geoId is only attached for US / empty locations unless
   // SUITOR_LINKEDIN_GEO_ID was set explicitly.
-  if (DEFAULT_GEO_ID && (GEO_ID_EXPLICIT || isUsLinkedInLocation(DEFAULT_LOCATION))) {
+  if (DEFAULT_GEO_ID && (GEO_ID_EXPLICIT || isUsLinkedInLocation(loc))) {
     params.set('geoId', DEFAULT_GEO_ID);
   }
-  if (DEFAULT_WORKPLACE) params.set('f_WT', DEFAULT_WORKPLACE);
+  if (wt) params.set('f_WT', wt);
   const tpr = normalizeLinkedInRecency(recency ?? DEFAULT_RECENCY);
   if (tpr) params.set('f_TPR', tpr);
   if (DEFAULT_EXPERIENCE) params.set('f_E', DEFAULT_EXPERIENCE);
@@ -377,8 +388,10 @@ export function linkedInSearchUrl(query, recency) {
   return `https://www.linkedin.com/jobs/search/?${params.toString()}`;
 }
 
-export function linkedInFilterSummary(recency) {
-  const workplace = DEFAULT_WORKPLACE === '2' ? 'Remote' : DEFAULT_WORKPLACE ? `Workplace ${DEFAULT_WORKPLACE}` : 'Any workplace';
+export function linkedInFilterSummary(recency, location, workplace) {
+  const wt = resolveLinkedInWorkplace(workplace);
+  const loc = resolveLinkedInLocation(location);
+  const workplaceLabel = wt === '2' ? 'Remote' : wt ? `Workplace ${wt}` : 'Any workplace';
   const tpr = normalizeLinkedInRecency(recency ?? DEFAULT_RECENCY);
   const recencyLabel = tpr === 'r604800' ? 'Past week'
     : tpr === 'r86400' ? 'Past 24 hours'
@@ -387,7 +400,7 @@ export function linkedInFilterSummary(recency) {
     : tpr || 'Any recency';
   const experience = DEFAULT_EXPERIENCE ? 'Mid-Senior, Director, Executive' : 'Any level';
   const salary = DEFAULT_SALARY_BUCKET ? 'LinkedIn salary bucket 5' : 'No salary bucket';
-  return `${workplace}; ${DEFAULT_LOCATION}; ${recencyLabel}; ${experience}; ${salary}; Easy Apply excluded after result extraction.`;
+  return `${workplaceLabel}; ${loc}; ${recencyLabel}; ${experience}; ${salary}; Easy Apply excluded after result extraction.`;
 }
 
 export function classifyLinkedInSessionSnapshot(snapshot = {}) {
@@ -723,18 +736,18 @@ export async function extractLinkedInJobs(page, limit, options = {}) {
   return enriched;
 }
 
-async function searchLinkedInSingle(query, limit = 10, recency) {
+async function searchLinkedInSingle(query, limit = 10, recency, location, workplace) {
   if (cancelled()) {
     status({ state: 'cancelled', log: 'LinkedIn browser search was cancelled.' });
     return [];
   }
   status({ state: 'launching', log: `Starting LinkedIn browser search for: ${query || DEFAULT_QUERY}` });
-  status({ state: 'launching', log: `Applying LinkedIn filters: ${linkedInFilterSummary(recency)}` });
+  status({ state: 'launching', log: `Applying LinkedIn filters: ${linkedInFilterSummary(recency, location, workplace)}` });
   const context = await launchContext(false);
   const page = context.pages()[0] || await context.newPage();
   const results = [];
   try {
-    await page.goto(linkedInSearchUrl(query, recency), { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.goto(linkedInSearchUrl(query, recency, location, workplace), { waitUntil: 'domcontentloaded', timeout: 60000 });
     status({ state: 'searching', currentUrl: page.url(), log: 'LinkedIn search page loaded.' });
     await screenshot(page, 'search loaded');
     const diagnostics = await linkedInSessionDiagnostics(page);
@@ -798,7 +811,7 @@ async function searchLinkedInSingle(query, limit = 10, recency) {
     const payload = {
       generatedAt: now(),
       query: query || DEFAULT_QUERY,
-      filters: linkedInFilterSummary(),
+      filters: linkedInFilterSummary(recency, location, workplace),
       compFloor: floors.defaultFloor,
       inspectedUniqueCount: seenKeys.size,
       inspectionTarget: inspectTarget,
@@ -826,17 +839,17 @@ async function searchLinkedInSingle(query, limit = 10, recency) {
 
 // `limit` is the result quota for a single search. When the query holds several
 // `;`-separated lanes it becomes the per-lane quota, so every lane always runs.
-async function searchLinkedIn(queryInput, limit = 10, companyInput = '', recency) {
+async function searchLinkedIn(queryInput, limit = 10, companyInput = '', recency, location, workplace) {
   try { if (existsSync(CANCEL_PATH)) rmSync(CANCEL_PATH, { force: true }); } catch {}
   const titleLanes = splitQueries(queryInput || DEFAULT_QUERY).map(query => ({ query }));
   const companyLanes = splitQueries(companyInput).map(company => ({ query: company, company }));
   const lanes = [...titleLanes, ...companyLanes];
   if (lanes.length <= 1 && !lanes[0]?.company) {
-    return searchLinkedInSingle(lanes[0]?.query || DEFAULT_QUERY, limit, recency);
+    return searchLinkedInSingle(lanes[0]?.query || DEFAULT_QUERY, limit, recency, location, workplace);
   }
   const merged = await runSearchLanes(lanes, limit, async (query, perLane) => {
     if (cancelled()) return { cancelled: true, results: [] };
-    await searchLinkedInSingle(query, perLane, recency);
+    await searchLinkedInSingle(query, perLane, recency, location, workplace);
     if (cancelled()) {
       try { return { ...JSON.parse(readFileSync(RESULTS_PATH, 'utf-8')), cancelled: true }; } catch { return { cancelled: true, results: [] }; }
     }
@@ -884,7 +897,11 @@ async function main() {
     const companies = args.get('companies') || '';
     const limit = Number(args.get('limit') || envValue('SUITOR_LINKEDIN_LIMIT', 'SUITOR_LINKEDIN_LIMIT', 10));
     const recency = normalizeLinkedInRecency(args.get('recency') ?? DEFAULT_RECENCY);
-    await searchLinkedIn(query, limit, companies, recency);
+    const location = normalizeLinkedInLocation(args.get('location') ?? DEFAULT_LOCATION);
+    const workplace = args.has('workplace') || args.has('f_WT')
+      ? normalizeLinkedInWorkplace(args.get('workplace') ?? args.get('f_WT'))
+      : DEFAULT_WORKPLACE;
+    await searchLinkedIn(query, limit, companies, recency, location, workplace);
     return;
   }
   throw new Error(`Unknown browser command: ${command}`);

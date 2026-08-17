@@ -10,6 +10,20 @@ export function normalizeLinkedInRecency(value) {
   return LINKEDIN_RECENCY_VALUES.includes(recency) ? recency : LINKEDIN_RECENCY_DEFAULT;
 }
 
+export const LINKEDIN_LOCATION_DEFAULT = 'United States';
+export const LINKEDIN_WORKPLACE_REMOTE = '2';
+
+export function normalizeLinkedInLocation(value) {
+  const location = String(value || '').trim();
+  return location || LINKEDIN_LOCATION_DEFAULT;
+}
+
+export function normalizeLinkedInWorkplace(value) {
+  const workplace = String(value || '').trim();
+  if (!workplace || /^(none|off|0|any)$/i.test(workplace)) return '';
+  return workplace === LINKEDIN_WORKPLACE_REMOTE ? LINKEDIN_WORKPLACE_REMOTE : '';
+}
+
 export function splitQueries(value) {
   const parts = String(value || '')
     .split(/[;\n]+/)

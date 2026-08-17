@@ -492,12 +492,27 @@ function normalizeLinkedInRecency(value) {
   return LINKEDIN_RECENCY_VALUES.has(recency) ? recency : LINKEDIN_RECENCY_DEFAULT;
 }
 
-function localLinkedInJobsUrl(lane, recency) {
+const LINKEDIN_LOCATION_DEFAULT = 'United States';
+
+function normalizeLinkedInLocation(value) {
+  const location = String(value || '').trim();
+  return location || LINKEDIN_LOCATION_DEFAULT;
+}
+
+function normalizeLinkedInWorkplace(value) {
+  const workplace = String(value || '').trim();
+  if (!workplace || /^(none|off|0|any)$/i.test(workplace)) return '';
+  return workplace === '2' ? '2' : '';
+}
+
+function localLinkedInJobsUrl(lane, recency, location, workplace) {
   const params = new URLSearchParams({
     keywords: lane || linkedInLanes()[0],
-    f_WT: '2',
     f_TPR: normalizeLinkedInRecency(recency),
   });
+  params.set('location', normalizeLinkedInLocation(location));
+  const wt = normalizeLinkedInWorkplace(workplace);
+  if (wt) params.set('f_WT', wt);
   return `https://www.linkedin.com/jobs/search/?${params.toString()}`;
 }
 
@@ -3604,7 +3619,7 @@ els.linkedinSearchBtn?.addEventListener('click', async () => {
   const query = (state.linkedinLanes || []).join('; ') || els.linkedinQuery.value.trim();
   const poller = setInterval(refreshBrowserStatus, 1800);
   try {
-    await streamPost('/api/browser/linkedin-search', { query, limit: 6, recency: normalizeLinkedInRecency() }, {
+    await streamPost('/api/browser/linkedin-search', { query, limit: 6, recency: normalizeLinkedInRecency(), location: normalizeLinkedInLocation(), workplace: normalizeLinkedInWorkplace() }, {
       set innerHTML(v) {
         els.browserLog.textContent = plainTextFromRendered(v);
         refreshBrowserStatus();
